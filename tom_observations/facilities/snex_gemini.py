@@ -9,52 +9,29 @@ from tom_common.exceptions import ImproperCredentialsException
 from tom_observations.facility import GenericObservationFacility
 from tom_targets.models import Target
 
+from tom_observations.facilities import gemini
 from gsselect.gsselect import gsselect
 from gsselect.parangle import parangle
 
-GEMINI_DEFAULT_SETTINGS = {'portal_url': {'GS': 'https://139.229.34.15:8443',
-                                          'GN': 'https://128.171.88.221:8443'
-                                          },
-                           'api_key': {'GS': '',
-                                       'GN': ''},
-                           'user_email': '',
-                           'programs': {'GS-YYYYS-T-NNN': {'MM': 'Std: Some descriptive text',
-                                                           'NN': 'Rap: Some descriptive text'
-                                                           },
-                                        'GN-YYYYS-T-NNN': {'QQ': 'Std: Some descriptive text',
-                                                           'PP': 'Rap: Some descriptive text'
-                                                           }
-                                        },
-                           }
+import logging
+
+logger = logging.getLogger(__name__)
 
 try:
-    GEM_SETTINGS = settings.FACILITIES['GEM']
+    SNEX_GEMINI_SETTINGS = settings.FACILITIES['SNEx Gemini']
 except KeyError:
-    GEM_SETTINGS = GEMINI_DEFAULT_SETTINGS
+    SNEX_GEMINI_SETTINGS = gemini.GEMINI_DEFAULT_SETTINGS
 
-PORTAL_URL = GEM_SETTINGS['portal_url']
-TERMINAL_OBSERVING_STATES = ['TRIGGERED', 'ON_HOLD']
-SITES = {
-    'Cerro Pachon': {
-        'sitecode': 'cpo',
-        'latitude': -30.24075,
-        'longitude': -70.736694,
-        'elevation': 2722.
-    },
-    'Maunakea': {
-        'sitecode': 'mko',
-        'latitude': 19.8238,
-        'longitude': -155.46905,
-        'elevation': 4213.
-    }
-}
+PORTAL_URL = SNEX_GEMINI_SETTINGS['portal_url']
+TERMINAL_OBSERVING_STATES = gemini.TERMINAL_OBSERVING_STATES
+SITES = gemini.SITES
 
 
 def make_request(*args, **kwargs):
     response = requests.request(*args, **kwargs)
     if 400 <= response.status_code < 500:
-        print('Request failed: {}'.format(response.content))
-        raise ImproperCredentialsException('GEM')
+        logger.error('Request failed: {}'.format(response.content))
+        raise ImproperCredentialsException('SNEx Gemini')
     response.raise_for_status()
     return response
 
@@ -82,28 +59,9 @@ def flatten_error_dict(form, error_dict):
     return non_field_errors
 
 
-# def get_instruments():
-#     response = make_request(
-#         'GET',
-#         PORTAL_URL + '/api/instruments/',
-#         headers={'Authorization': 'Token {0}'.format(GEM_SETTINGS['api_key'])}
-#     )
-#     return response.json()
-#
-#
-# def instrument_choices():
-#     return [(k, k) for k in get_instruments()]
-#
-#
-# def filter_choices():
-#     return set([(f, f) for ins in get_instruments().values() for f in ins['filters']])
-
-
 def proposal_choices():
-    choices = []
-    for p in GEM_SETTINGS['programs']:
-        choices.append((p,p))
-    return choices
+    return [(proposal, proposal) for proposal in SNEX_GEMINI_SETTINGS['programs']]
+
 
 def obs_choices():
     choices = []
@@ -115,13 +73,74 @@ def obs_choices():
             choices.append((obsid,showtext))
     return choices
 
+
 def get_site(progid,location=False):
     values = progid.split('-')
-    gemloc = {'GS':'Gemini South','GN':'Gemini North'}
+    gemloc = {'GS': 'Gemini South', 'GN': 'Gemini North'}
     site = values[0].upper()
     if location:
         site = gemloc[site]
     return site
+
+
+def findgs():
+    gstarg = ''
+    gsra = ''
+    gsdec = ''
+    gsmag = ''
+    sgsmag = ''
+    gspa = 0.0
+    spa = str(gspa).strip()
+    l_pa = self.cleaned_data['posangle']
+
+    # Convert RA to hours
+    target = Target.objects.get(pk=self.cleaned_data['target_id'])
+    ra = target.ra / 15.
+    dec = target.dec
+
+    l_site = get_site(self.cleaned_data['obsid'], location=True)
+    l_pad = 7.
+    l_chop = False
+    l_rmin = -1.
+    # Parallactic angle?
+    l_pamode = self.cleaned_data['pamode']
+    if l_pamode == 'parallactic':
+        if self.cleaned_data['obsdate'].strip() == '':
+            print('WARNING: Observation date must be set in order to calculate the parallactic angle.')
+            return gstarg, gsra, gsdec, sgsmag, spa
+        else:
+            odate, otime = isodatetime(self.cleaned_data['obsdate'])
+            l_pa = parangle(str(ra), str(dec), odate, otime, l_site).value
+            l_pamode = 'flip'  # in case of guide star selection
+
+    # Guide star
+    overw = self.cleaned_data['overwrite'] == 'True'
+    gstarg, gsra, gsdec, gsmag, gspa = gsselect(target.name, str(ra), str(dec), pa=l_pa, imdir=settings.MEDIA_ROOT,
+                                                site=l_site, pad=l_pad, cat='UCAC4', inst=self.cleaned_data['inst'],
+                                                ifu=self.cleaned_data['ifu'],
+                                                port=self.cleaned_data['port'],
+                                                wfs=self.cleaned_data['gsprobe'], chopping=l_chop, pamode=l_pamode,
+                                                rmin=l_rmin,
+                                                iq=self.cleaned_data['iq'], cc=self.cleaned_data['cc'],
+                                                sb=self.cleaned_data['sb'],
+                                                overwrite=overw, display=False, verbose=False,
+                                                figout=True, figfile='default')
+
+    print(gstarg, gsra, gsdec, gsmag, gspa)
+    if gstarg != '':
+        sgsmag = str(gsmag).strip() + '/UC/Vega'
+    spa = str(gspa).strip()
+
+    return gstarg, gsra, gsdec, sgsmag, spa
+
+
+def isodatetime(value):
+    isostring = parse(value).isoformat()
+    ii = isostring.find('T')
+    date = isostring[0:ii]
+    time = isostring[ii + 1:]
+    return date, time
+
 
 class GEMObservationForm(GenericObservationForm):
 
@@ -267,63 +286,6 @@ class GEMObservationForm(GenericObservationForm):
 
     @property
     def observation_payload(self):
-
-        def isodatetime(value):
-            isostring = parse(value).isoformat()
-            ii = isostring.find('T')
-            date = isostring[0:ii]
-            time = isostring[ii + 1:]
-            return date, time
-
-        def findgs():
-
-            gstarg = ''
-            gsra = ''
-            gsdec = ''
-            gsmag = ''
-            sgsmag = ''
-            gspa = 0.0
-            spa = str(gspa).strip()
-            l_pa = self.cleaned_data['posangle']
-
-            # Convert RA to hours
-            target = Target.objects.get(pk=self.cleaned_data['target_id'])
-            ra = target.ra / 15.
-            dec = target.dec
-
-            l_site = get_site(self.cleaned_data['obsid'],location=True)
-            l_pad = 7.
-            l_chop = False
-            l_rmin = -1.
-            # Parallactic angle?
-            l_pamode = self.cleaned_data['pamode']
-            if l_pamode == 'parallactic':
-                if self.cleaned_data['obsdate'].strip() == '':
-                    print('WARNING: Observation date must be set in order to calculate the parallactic angle.')
-                    return gstarg, gsra, gsdec, sgsmag, spa
-                else:
-                    odate, otime = isodatetime(self.cleaned_data['obsdate'])
-                    l_pa = parangle(str(ra), str(dec), odate, otime, l_site).value
-                    l_pamode = 'flip'  # in case of guide star selection
-
-            # Guide star
-            overw = self.cleaned_data['overwrite'] == 'True'
-            gstarg, gsra, gsdec, gsmag, gspa = gsselect(target.name, str(ra), str(dec), pa=l_pa, imdir=settings.MEDIA_ROOT,
-                site=l_site, pad=l_pad, cat='UCAC4', inst=self.cleaned_data['inst'], ifu=self.cleaned_data['ifu'],
-                port=self.cleaned_data['port'],
-                wfs=self.cleaned_data['gsprobe'], chopping=l_chop, pamode=l_pamode, rmin = l_rmin,
-                iq=self.cleaned_data['iq'], cc=self.cleaned_data['cc'], sb=self.cleaned_data['sb'],
-                overwrite=overw, display=False, verbose=False,
-                figout=True, figfile='default')
-
-            print(gstarg, gsra, gsdec, gsmag, gspa)
-            if gstarg != '':
-                sgsmag = str(gsmag).strip() + '/UC/Vega'
-            spa = str(gspa).strip()
-
-            return gstarg, gsra, gsdec, sgsmag, spa
-
-
         target = Target.objects.get(pk=self.cleaned_data['target_id'])
         spa = str(self.cleaned_data['posangle']).strip()
 

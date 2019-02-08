@@ -88,7 +88,7 @@ TEMPLATES = [
 
 CRISPY_TEMPLATE_PACK = 'bootstrap4'
 
-WSGI_APPLICATION = 'tom20190109.wsgi.application'
+WSGI_APPLICATION = 'snex2.wsgi.application'
 
 
 # Database
@@ -220,7 +220,7 @@ TOM_HARVESTER_CLASSES = [
     'tom_catalogs.harvesters.ned.NEDHarvester',
     #'tom_catalogs.harvesters.jplhorizons.JPLHorizonsHarvester',
     #'tom_catalogs.harvesters.mpc.MPCHarvester',
-    'tom20190109.tns_harvester.TNSHarvester',
+    'snex2.tns_harvester.TNSHarvester',
     ]
 
 DATA_TYPES = (
