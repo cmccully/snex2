@@ -209,6 +209,11 @@ FACILITIES = {
     }
 }
 
+FACILITY_CLASSES = [
+        'tom_observations.facilities.lco.LCOFacility',
+        'tom_observations.facilities.snex_gemini.SNExGemini',
+]
+
 # Authentication strategy can either be LOCKED (required login for all views)
 # or READ_ONLY (read only access to views)
 AUTH_STRATEGY = 'LOCKED'
