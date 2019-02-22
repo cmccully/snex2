@@ -176,8 +176,8 @@ FACILITIES = {
     },
     'GEM': {
         'portal_url': {
-            'GS': 'https://139.229.34.15:8443',
-            'GN': 'https://128.171.88.221:8443',
+            'GS': os.getenv('GS_TOO_URL'),
+            'GN': os.getenv('GN_TOO_URL'),
         },
         'api_key': {
             'GS': '',
@@ -195,6 +195,18 @@ FACILITIES = {
             },
         },
     },
+    'SNExGemini': {
+        'portal_url': {
+            'GS': os.getenv('GS_TOO_URL', ''),
+            'GN': os.getenv('GN_TOO_URL', ''),
+        },
+        'api_key': {
+            'GS': os.getenv('GS_API_KEY', ''),
+            'GN': os.getenv('GS_API_KEY', ''),
+        },
+        'user_email': os.getenv('GEMINI_EMAIL'),
+        'programs': os.getenv('GEMINI_PROGRAMS', '').split(',')
+    }
 }
 
 # Authentication strategy can either be LOCKED (required login for all views)
@@ -218,8 +230,6 @@ TOM_ALERT_CLASSES = [
 TOM_HARVESTER_CLASSES = [
     'tom_catalogs.harvesters.simbad.SimbadHarvester',
     'tom_catalogs.harvesters.ned.NEDHarvester',
-    #'tom_catalogs.harvesters.jplhorizons.JPLHorizonsHarvester',
-    #'tom_catalogs.harvesters.mpc.MPCHarvester',
     'snex2.tns_harvester.TNSHarvester',
     ]
 
