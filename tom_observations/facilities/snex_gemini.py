@@ -2,7 +2,8 @@ import requests
 from django.conf import settings
 from django import forms
 from dateutil.parser import parse
-from crispy_forms.layout import Layout, Div
+from crispy_forms.layout import Layout, Div, HTML
+from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
 
 from tom_observations.facility import GenericObservationForm
 from tom_observations.facility import GenericObservationFacility
@@ -34,12 +35,12 @@ def obs_choices():
         for obs in GEM_SETTINGS['programs'][p]:
             obsid = p + '-' + obs
             val = p.split('-')
-            showtext = val[0][1]+val[1][2:]+val[2]+val[3]+ ' - '+ GEM_SETTINGS['programs'][p][obs]
-            choices.append((obsid,showtext))
+            showtext = val[0][1] + val[1][2:] + val[2] + val[3] + ' - ' + GEM_SETTINGS['programs'][p][obs]
+            choices.append((obsid, showtext))
     return choices
 
 
-def get_site(progid,location=False):
+def get_site(progid, location=False):
     values = progid.split('-')
     gemloc = {'GS': 'Gemini South', 'GN': 'Gemini North'}
     site = values[0].upper()
@@ -57,10 +58,9 @@ def isodatetime(value):
 
 
 class SNExGeminiObservationForm(GenericObservationForm):
-
     telescope = forms.ChoiceField(choices=(('north', 'Gemini North'), ('south', 'Gemini South')))
-    max_airmass = forms.FloatField(min_value=1.0, max_value=5.0, label='Airmass <', initial=2.0)
-    window_size = forms.FloatField(label='Once in the next', initial=1.0)
+
+    observation_type = forms.ChoiceField(choices=(('gmos_imaging', 'GMOS Optical Imaging')))
 
     g_exptime = forms.FloatField(label='g', initial=0.0)
     r_exptime = forms.FloatField(label='r', initial=0.0)
@@ -79,36 +79,41 @@ class SNExGeminiObservationForm(GenericObservationForm):
     flamingos_grating = forms.ChoiceField(choices=(('JH', 'JH'), ('HK', 'HK')))
     flamingos_exptime = forms.FloatField(initial=0.0)
 
+    max_airmass = forms.FloatField(min_value=1.0, max_value=5.0, label='Airmass <', initial=2.0)
+    window_size = forms.FloatField(label='Once in the next', initial=1.0)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.helper.layout = Layout(
             self.common_layout,
             Div(
-                Div(
-                    'obsid', 'posangle', 'brightness', 'eltype', 'note', 'gstarg', 'gsbrightness',
+                Div(HTML("<p></p>"),
+                    PrependedAppendedText(
+                        'window', 'Once in the next', 'days'
+                    ),
+                    Div(
+                        Div(PrependedText('g_exptime', 'g'), css_class='col-md-6'),
+                        css_class='form-row'
+                    ),
+                    Div(
+                        Div(PrependedText('r_exptime', 'r'), css_class='col-md-6'),
+                        css_class='form-row'
+                    ),
+                    Div(
+                        Div(PrependedText('i_exptime', 'i'), css_class='col-md-6'),
+                        css_class='form-row'
+                    ),
+                    Div(
+                        Div(PrependedText('z_exptime', 'z'), css_class='col-md-6'),
+                        css_class='form-row'
+                    ),
                     css_class='col'
-                ),
+                    ),
                 Div(
-                    'ready', 'pamode', 'brightness_band', 'elmin', 'window_start', 'gsra', 'gsbrightness_band',
-                    css_class='col'
-                ),
-                Div(
-                    'group', 'obsdate', 'brightness_system', 'elmax', 'window_duration', 'gsdec', 'gsbrightness_system',
-                    css_class='col'
-                ),
-                css_class='form-row'
-            ),
-            Div(
-                Div(
-                    'inst', 'iq', 'overwrite',
-                    css_class='col'
-                ),
-                Div(
-                    'gsprobe', 'cc', 'port',
-                    css_class='col'
-                ),
-                Div(
-                    'ifu', 'sb',
+                    HTML("<p></p>"),
+                    PrependedText('max_airmass', 'Airmass <'),
+                    PrependedText('ipp_value', 'IPP'),
+                    'instrument_name', 'proposal', 'observation_type',
                     css_class='col'
                 ),
                 css_class='form-row'
@@ -128,7 +133,7 @@ class SNExGeminiObservationForm(GenericObservationForm):
 
         ii = self.cleaned_data['obsid'].rfind('-')
         progid = self.cleaned_data['obsid'][0:ii]
-        obsnum = self.cleaned_data['obsid'][ii+1:]
+        obsnum = self.cleaned_data['obsid'][ii + 1:]
         payload = {
             "prog": progid,
             # "password": self.cleaned_data['userkey'],
@@ -145,8 +150,8 @@ class SNExGeminiObservationForm(GenericObservationForm):
 
         if self.cleaned_data['brightness'] != None:
             smags = str(self.cleaned_data['brightness']).strip() + '/' + \
-                self.cleaned_data['brightness_band'] + '/' + \
-                self.cleaned_data['brightness_system']
+                    self.cleaned_data['brightness_band'] + '/' + \
+                    self.cleaned_data['brightness_system']
             payload["mags"] = smags
 
         if self.cleaned_data['group'].strip() != '':
