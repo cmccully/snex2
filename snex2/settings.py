@@ -209,7 +209,7 @@ FACILITIES = {
     }
 }
 
-FACILITY_CLASSES = [
+TOM_FACILITY_CLASSES = [
         'tom_observations.facilities.lco.LCOFacility',
         'tom_observations.facilities.snex_gemini.SNExGemini',
 ]
