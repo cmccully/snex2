@@ -60,7 +60,7 @@ def isodatetime(value):
 class SNExGeminiObservationForm(GenericObservationForm):
     telescope = forms.ChoiceField(choices=(('north', 'Gemini North'), ('south', 'Gemini South')))
 
-    observation_type = forms.ChoiceField(choices=(('gmos_imaging', 'GMOS Optical Imaging')))
+    observation_type = forms.ChoiceField(choices=(('gmos_imaging', 'GMOS Optical Imaging'), ('gmos_spectra', 'GMOS Optical Spectra')))
 
     g_exptime = forms.FloatField(label='g', initial=0.0)
     r_exptime = forms.FloatField(label='r', initial=0.0)
