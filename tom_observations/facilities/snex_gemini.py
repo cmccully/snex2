@@ -40,13 +40,8 @@ def obs_choices():
     return choices
 
 
-def get_site(progid, location=False):
-    values = progid.split('-')
-    gemloc = {'GS': 'Gemini South', 'GN': 'Gemini North'}
-    site = values[0].upper()
-    if location:
-        site = gemloc[site]
-    return site
+def get_site_code_from_program(program_id):
+    return program_id.split('-')[0]
 
 
 def isodatetime(value):
@@ -62,14 +57,14 @@ class SNExGeminiObservationForm(GenericObservationForm):
 
     observation_type = forms.ChoiceField(choices=(('gmos_imaging', 'GMOS Optical Imaging'), ('gmos_spectra', 'GMOS Optical Spectra')))
 
-    g_exptime = forms.FloatField(label='g', initial=0.0)
-    r_exptime = forms.FloatField(label='r', initial=0.0)
-    i_exptime = forms.FloatField(label='i', initial=0.0)
-    z_exptime = forms.FloatField(label='z', initial=0.0)
+    g_exptime = forms.ChoiceField(choices=([0.0, 100.0, 300.0, 500.0, 600.0, 900.0]), initial=0.0)
+    r_exptime = forms.ChoiceField(choices=([0.0, 100.0, 200.0, 300.0, 450.0, 600.0, 900.0]), initial=0.0)
+    i_exptime = forms.ChoiceField(choices=([0.0, 100.0, 200.0, 300.0, 450.0, 600.0, 900.0]), initial=0.0)
+    z_exptime = forms.ChoiceField(choices=([0.0, 100.0, 200.0, 300.0, 400.0, 450.0, 600.0, 900.0]), initial=0.0)
 
-    j_exptime = forms.FloatField(label='J', initial=0.0)
-    h_exptime = forms.FloatField(label='H', initial=0.0)
-    k_exptime = forms.FloatField(label='K', initial=0.0)
+    j_exptime = forms.FloatField(initial=0.0)
+    h_exptime = forms.FloatField(initial=0.0)
+    k_exptime = forms.FloatField(initial=0.0)
 
     gmos_grating = forms.ChoiceField(choices=(('B600', 'B600'), ('R400', 'R400')))
     gmos_exptime = forms.FloatField(initial=0.0)
@@ -79,7 +74,7 @@ class SNExGeminiObservationForm(GenericObservationForm):
     flamingos_grating = forms.ChoiceField(choices=(('JH', 'JH'), ('HK', 'HK')))
     flamingos_exptime = forms.FloatField(initial=0.0)
 
-    max_airmass = forms.FloatField(min_value=1.0, max_value=5.0, label='Airmass <', initial=2.0)
+    max_airmass = forms.FloatField(min_value=1.0, max_value=5.0, initial=2.0)
     window_size = forms.FloatField(label='Once in the next', initial=1.0)
 
     def __init__(self, *args, **kwargs):
@@ -87,6 +82,11 @@ class SNExGeminiObservationForm(GenericObservationForm):
         self.helper.layout = Layout(
             self.common_layout,
             Div(
+                Div(
+                    HTML("<p></p>"),
+                    PrependedText('observation_type', "Observation Type"),
+                    css_class='col'
+                ),
                 Div(HTML("<p></p>"),
                     PrependedAppendedText(
                         'window', 'Once in the next', 'days'
@@ -112,8 +112,6 @@ class SNExGeminiObservationForm(GenericObservationForm):
                 Div(
                     HTML("<p></p>"),
                     PrependedText('max_airmass', 'Airmass <'),
-                    PrependedText('ipp_value', 'IPP'),
-                    'instrument_name', 'proposal', 'observation_type',
                     css_class='col'
                 ),
                 css_class='form-row'
@@ -127,13 +125,8 @@ class SNExGeminiObservationForm(GenericObservationForm):
             self.add_error(None, errors)
         return not errors
 
-    @property
-    def observation_payload(self):
-        target = Target.objects.get(pk=self.cleaned_data['target_id'])
+    def _init_observation_payload(self):
 
-        ii = self.cleaned_data['obsid'].rfind('-')
-        progid = self.cleaned_data['obsid'][0:ii]
-        obsnum = self.cleaned_data['obsid'][ii + 1:]
         payload = {
             "prog": progid,
             # "password": self.cleaned_data['userkey'],
@@ -145,8 +138,28 @@ class SNExGeminiObservationForm(GenericObservationForm):
             "ra": target.ra,
             "dec": target.dec,
             "note": self.cleaned_data['note'],
-            "ready": True,
+            "ready": True
         }
+        return payload
+
+    @property
+    def observation_payload(self):
+        target = Target.objects.get(pk=self.cleaned_data['target_id'])
+        payloads = []
+        if self.cleaned_data['observation_type'] == 'gmos_imaging':
+            for f in ['g', 'r', 'i', 'z']:
+                if self.cleaned_data[f + '_exptime'] > 0.0:
+                    # create the program level payload (username password etc)
+                    payload = self._init_observation_payload()
+                    # find the science observation ID for that observation
+                    # make
+                    # Add the exposure time to the payload (divided by 4 because of 4 dither positions)
+                    pass
+
+        ii = self.cleaned_data['obsid'].rfind('-')
+        progid = self.cleaned_data['obsid'][0:ii]
+        obsnum = self.cleaned_data['obsid'][ii + 1:]
+
 
         if self.cleaned_data['brightness'] != None:
             smags = str(self.cleaned_data['brightness']).strip() + '/' + \
@@ -177,13 +190,19 @@ class SNExGemini(GenericObservationFacility):
     form = SNExGeminiObservationForm
 
     @classmethod
-    def submit_observation(clz, observation_payload):
-        response = requests.post(PORTAL_URL[get_site(observation_payload['prog'])] + '/too',
-                                 verify=False, params=observation_payload)
-        response.raise_for_status()
-        # Return just observation number
-        observation_id = response.text.split('-')
-        return [observation_id[-1]]
+    def submit_observation(clz, observation_payloads):
+        new_observation_ids = []
+        for observation_payload in observation_payloads:
+            response = requests.post(PORTAL_URL[get_site_code_from_program(observation_payload['prog'])] ,
+                                     verify=False, params=observation_payload)
+            # Note this assumes that if there is an error with the api, it will happen on the first payload
+            # If it happens on a later payload, we could end up with partially submitted requests
+            # we could in principle try to roll back the successful calls using the observation ids we just got.
+            response.raise_for_status()
+            # Return just observation number
+            new_observation_ids.append(response.text)
+
+        return new_observation_ids
 
     @classmethod
     def validate_observation(clz, observation_payload):
